@@ -6,5 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+ab_glyph = "0.2.25"
+clap = { version = "4.5.4", features = ["cargo", "derive"] }
 image = "0.25.1"
 imageproc = "0.24.0"
