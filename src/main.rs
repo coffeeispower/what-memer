@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use ab_glyph::FontVec;
 use clap::Parser;
-use image::{GenericImage, Rgb};
+use image::{DynamicImage, GenericImage, Rgb};
 use imageproc::{drawing::text_size, rect::Rect};
 
 #[derive(Parser, Debug, Clone)]
@@ -13,8 +13,8 @@ pub struct Args {
     image: PathBuf,
     #[arg(help = "where to put the final image")]
     output: PathBuf,
-    #[arg(short, long, default_value_t = ("WHAT?".to_string()), help = "The text to put bellow the image")]
-    text: String,
+    #[arg(short, long, help = "The text to put bellow the image")]
+    text: Vec<String>,
     #[arg(short, long, help = "Override default font")]
     font: Option<PathBuf>,
 }
@@ -26,12 +26,23 @@ const BORDER_THICKNESS: u32 = 5;
 const WHITE: Rgb<u8> = Rgb([0xff, 0xff, 0xff]);
 fn main() {
     let args = Args::parse();
-    let original_image = image::open(args.image)
+    let mut image = image::open(args.image)
         .unwrap_or_else(|e| {
             eprintln!("Failed to open original image file: {e}");
             std::process::exit(1);
-        })
-        .to_rgb8();
+        });
+    let texts = if args.text.is_empty() { vec!["WHAT?".to_string()] } else { args.text };
+    for text in texts {
+        image = frame_image(&image, &text, args.font.clone());
+    }
+    image.save(args.output).unwrap_or_else(|e| {
+        eprintln!("Failed to save output image: {e}");
+        std::process::exit(1);
+    });
+}
+
+
+pub fn frame_image(original_image: &DynamicImage, text: &str, font_path: Option<PathBuf>) -> DynamicImage {
     let mut output_image = image::RgbImage::new(
         PADDING + original_image.width() + PADDING,
         PADDING + original_image.height() + TEXT_MARGIN + TEXT_SIZE + TEXT_MARGIN,
@@ -47,11 +58,9 @@ fn main() {
         );
     }
     output_image
-        .copy_from(&original_image, PADDING, PADDING)
+        .copy_from(&original_image.to_rgb8(), PADDING, PADDING)
         .expect("original image must fit the final image");
-    let font_bytes = args
-        .font
-        .map(|path| {
+    let font_bytes = font_path.map(|path| {
             std::fs::read(path).unwrap_or_else(|e| {
                 eprintln!("Failed to open font file: {e}");
                 std::process::exit(1);
@@ -62,7 +71,7 @@ fn main() {
         eprintln!("Failed to parse font file: {e}");
         std::process::exit(1);
     });
-    let text_x = output_image.width() / 2 - text_size(TEXT_SIZE as f32, &font, &args.text).0 / 2;
+    let text_x = output_image.width() / 2 - text_size(TEXT_SIZE as f32, &font, text).0 / 2;
     imageproc::drawing::draw_text_mut(
         &mut output_image,
         WHITE,
@@ -70,10 +79,7 @@ fn main() {
         (PADDING + original_image.height() + TEXT_MARGIN) as i32,
         TEXT_SIZE as f32,
         &font,
-        args.text.as_str(),
+        text,
     );
-    output_image.save(args.output).unwrap_or_else(|e| {
-        eprintln!("Failed to save output image: {e}");
-        std::process::exit(1);
-    });
+    output_image.into()
 }
